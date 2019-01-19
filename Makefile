@@ -1,5 +1,5 @@
-CFLAGS=-Wall -Werror -pedantic -march=native -O2 `sdl2-config --cflags`
-LDFLAGS=`sdl2-config --libs`
+CFLAGS=-Wall -Werror -pedantic -march=native -O2 $(shell sdl2-config --cflags)
+LDFLAGS=$(shell sdl2-config --libs)
 BIN_NAME=chip8
 
 main: main.o chip8.o screen.o
