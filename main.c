@@ -9,7 +9,7 @@ static uint8_t loop[] = {0x10,0x00};
 int main(int argc, char *argv[argc+1])
 {
     if (SDL_Init(0) != 0) {
-        FAIL("main", SDL_GetError());
+        FAIL(SDL_GetError());
     }
     atexit(SDL_Quit);
     /* getopt for scale, entry point */
@@ -19,7 +19,7 @@ int main(int argc, char *argv[argc+1])
         FILE *in = fopen(argv[1], "rb");
         size_t bytes_in = fread(buf, sizeof(uint8_t), BUF_SZ, in);
         if (!feof(in)) {
-            FAIL("main", "input file overflows available program memory");
+            FAIL("input file overflows available program memory");
         }
         chip8_load(0, buf, bytes_in);
     } else {

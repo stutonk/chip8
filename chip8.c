@@ -80,7 +80,7 @@ void chip8_execute(uint16_t entry)
                 break;
             case 0x2: //CALL
                 if (sp > CHIP8_STACK_TOP) {
-                    FAIL("chip8_execute", "stack overflow");
+                    FAIL("stack overflow");
                 }
                 mem[sp] = (pc >> 8);
                 mem[sp+1] = pc & 0x00ff;
@@ -134,7 +134,7 @@ void chip8_execute(uint16_t entry)
                 op_f(op_lo, reg_operand_x);
                 break;
             default:
-                FAIL("chip8_execute", "illegal instruction");
+                FAIL("illegal instruction");
                 break;
         }
     }
@@ -153,16 +153,16 @@ static void op_0(uint8_t op)
             sp -= INSTR_SZ;
             break;
         default:
-            FAIL("op_0", "illegal instruction");
+            FAIL("illegal instruction");
     }
 }
 
 static void op_8(uint8_t op, uint8_t x, uint8_t y) 
 {
-    FAIL("op_8", "unimplemented");
+    FAIL("unimplemented");
 }
 
 static void op_f(uint8_t op, uint8_t x) 
 {
-    FAIL("op_f", "unimplemented");
+    FAIL("unimplemented");
 }

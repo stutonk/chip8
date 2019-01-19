@@ -2,6 +2,6 @@
 
 #include <stdlib.h>
 
-#define FAIL(name, reason)                             \
-    fprintf(stderr, "%s() error: %s\n", name, reason); \
+#define FAIL(reason)                             \
+    fprintf(stderr, "%s() error: %s\n", __func__, reason); \
     exit(EXIT_FAILURE);
