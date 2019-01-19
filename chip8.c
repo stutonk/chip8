@@ -3,31 +3,17 @@
 #include <string.h>
 #include "chip8.h"
 #include "screen.h"
+#include "util.h"
 
 #define INSTR_SZ 2
 #define NUMREGS 16
-
-#define WIN_TITLE "CHIP8"
-#define DEFAULT_SCALE 3
-#define SCREEN_W 64
-#define SCREEN_W_EXP 6
-#define SCREEN_H 32
-#define SCREEN_H_EXP 5
-#define SPRITE_W 8
 
 static uint8_t mem[CHIP8_MEM_SZ] = {0};
 static uint8_t reg_v[NUMREGS] = {0};
 static uint16_t reg_i = 0;
 static uint16_t pc = 0;
 static uint16_t sp = CHIP8_STACK_BOTTOM;
-static bool vid_mem[SCREEN_W * SCREEN_H] = {0};
-static SDL_Window *win = 0;
-static SDL_Renderer *ren = 0;
 
-static void cleanup_SDL(void);
-static void fail(char const *, char const *);
-static void cls(void);
-static void draw(uint8_t, uint8_t, uint8_t);
 static void key(uint8_t, uint8_t);
 static void op_0(uint8_t);
 static void op_8(uint8_t, uint8_t, uint8_t);
@@ -37,30 +23,7 @@ void chip8_init(size_t scale)
 {
     scale = (scale) ? scale : DEFAULT_SCALE;
     chip8_reset();
-    if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_TIMER) != 0) {
-        fail("chip8_init", SDL_GetError());
-    }
-    win = SDL_CreateWindow(
-        WIN_TITLE,
-        SDL_WINDOWPOS_UNDEFINED,
-        SDL_WINDOWPOS_UNDEFINED,
-        0x1 << (SCREEN_W_EXP + scale),
-        0x1 << (SCREEN_H_EXP + scale),
-        0
-    );
-    if (!win) {
-        fail("chip8_init", SDL_GetError());
-    }
-    ren = SDL_CreateRenderer(
-        win,
-        -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
-    );
-    if (!ren) {
-        fail("chip8_init", SDL_GetError());
-    }
-    SDL_RenderClear(ren);
-    SDL_RenderPresent(ren);
+    screen_init(scale);
 }
 
 void chip8_reset(void)
@@ -74,12 +37,12 @@ void chip8_reset(void)
     reg_i = 0;
     pc = 0;
     sp = CHIP8_STACK_BOTTOM;
-    cls();
+    screen_cls();
 }
 
 void chip8_destroy(void) 
 {
-    cleanup_SDL();
+    screen_destory();
 }
 
 bool chip8_load(uint16_t offset, uint8_t bytes[], size_t num)
@@ -117,7 +80,7 @@ void chip8_execute(uint16_t entry)
                 break;
             case 0x2: //CALL
                 if (sp > CHIP8_STACK_TOP) {
-                    fail("chip8_execute", "stack overflow");
+                    FAIL("chip8_execute", "stack overflow");
                 }
                 mem[sp] = (pc >> 8);
                 mem[sp+1] = pc & 0x00ff;
@@ -171,74 +134,35 @@ void chip8_execute(uint16_t entry)
                 op_f(op_lo, reg_operand_x);
                 break;
             default:
-                fail("chip8_execute", "illegal instruction");
+                FAIL("chip8_execute", "illegal instruction");
                 break;
         }
     }
 }
 
-static
-void cleanup_SDL(void) 
-{
-    if (win) {
-        SDL_DestroyWindow(win);
-    }
-    if (ren) {
-        SDL_DestroyRenderer(ren);
-    }
-    SDL_Quit();
-}
+static inline void key(uint8_t op, uint8_t reg) {}
 
-static
-void fail(char const *func_name, char const *reason)
-{
-    cleanup_SDL();
-    fprintf(stderr, "%s() error: %s\n", func_name, reason);
-    exit(EXIT_FAILURE);
-}
-
-static
-void cls(void)
-{
-    for (size_t i = 0; i < SCREEN_H*SCREEN_W; ++i) {
-        vid_mem[i] = 0;
-    }
-    if (ren) {
-        SDL_RenderClear(ren);
-        SDL_RenderPresent(ren);
-    }
-}
-
-static 
-void draw(uint8_t x, uint8_t y, uint8_t w) {}
-
-static inline
-void key(uint8_t op, uint8_t reg) {}
-
-static inline
-void op_0(uint8_t op) 
+static void op_0(uint8_t op) 
 {
     switch (op) {
         case 0xe0: //CLS
-            cls();
+            screen_cls();
             break;
         case 0xee: //RET
             pc = mem[sp] - INSTR_SZ;
             sp -= INSTR_SZ;
             break;
         default:
-            fail("op_0", "illegal instruction");
+            FAIL("op_0", "illegal instruction");
     }
 }
 
-static inline
-void op_8(uint8_t op, uint8_t x, uint8_t y) 
+static void op_8(uint8_t op, uint8_t x, uint8_t y) 
 {
-    fail("op_8", "unimplemented");
+    FAIL("op_8", "unimplemented");
 }
 
-static inline
-void op_f(uint8_t op, uint8_t x) 
+static void op_f(uint8_t op, uint8_t x) 
 {
-    fail("op_f", "unimplemented");
+    FAIL("op_f", "unimplemented");
 }
