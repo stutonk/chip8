@@ -14,7 +14,10 @@ static SDL_Renderer *ren = 0;
 
 void screen_init(size_t scale)
 {
-    SDL_InitSubSystem(SDL_INIT_VIDEO);
+
+    if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
+        FAIL("screen_init", SDL_GetError());
+    }
     win = SDL_CreateWindow(
         SCREEN_WIN_TITLE,
         SDL_WINDOWPOS_UNDEFINED,

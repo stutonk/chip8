@@ -13,6 +13,7 @@ int main(int argc, char *argv[argc+1])
     }
     atexit(SDL_Quit);
     /* getopt for scale, entry point */
+    chip8_init(0);
     if (argc > 1) {
         uint8_t buf[BUF_SZ] = {0};
         FILE *in = fopen(argv[1], "rb");

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdbool.h>
+
 #define SCREEN_WIN_TITLE "CHIP8"
 #define SCREEN_DEFAULT_SCALE 3
 

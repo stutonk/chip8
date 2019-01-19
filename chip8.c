@@ -21,7 +21,7 @@ static void op_f(uint8_t, uint8_t);
 
 void chip8_init(size_t scale) 
 {
-    scale = (scale) ? scale : DEFAULT_SCALE;
+    scale = (scale) ? scale : SCREEN_DEFAULT_SCALE;
     chip8_reset();
     screen_init(scale);
 }
@@ -42,7 +42,7 @@ void chip8_reset(void)
 
 void chip8_destroy(void) 
 {
-    screen_destory();
+    screen_destroy();
 }
 
 bool chip8_load(uint16_t offset, uint8_t bytes[], size_t num)
@@ -125,7 +125,7 @@ void chip8_execute(uint16_t entry)
                 reg_v[reg_operand_x] = op_lo & (rand() % 0xff);
                 break;
             case 0xd://DRAW
-                draw(reg_operand_x, reg_operand_y, op_lo & 0x0f);
+                //screen_draw(reg_operand_x, reg_operand_y, op_lo & 0x0f);
                 break;
             case 0xe: //Skip if [not] key
                 key(op_lo, reg_operand_x);
