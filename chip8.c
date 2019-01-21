@@ -164,7 +164,51 @@ static void op_0(uint8_t op)
 
 static void op_8(uint8_t op, uint8_t x, uint8_t y) 
 {
-    FAIL("unimplemented");
+    switch (op) {
+        case 0x0: //ASGN
+            reg_v[x] = reg_v[y];
+            break;
+        case 0x1: //OR
+            reg_v[x] |= reg_v[y];
+            break;
+        case 0x2: //AND
+            reg_v[x] &= reg_v[y];
+            break;
+        case 0x3: //XOR
+            reg_v[x] ^= reg_v[y];
+            break;
+        case 0x4: //ADD
+            {
+                uint8_t res = reg_v[x] + reg_v[y];
+                if (res < reg_v[x] || res < reg_v[y]) {
+                    reg_v[0xf] = 0x1;
+                }
+                reg_v[x] = res;
+            }
+            break;
+        case 0x5: //SUBY
+            {
+                uint8_t res = reg_v[x] - reg_v[y];
+                if (res > reg_v[x]) {
+                    reg_v[0xf] = 0x1;
+                }
+                reg_v[x] = res;
+            }
+            break;
+        case 0x6: //SHR
+            reg_v[0xf] = reg_v[x] & 0xfe;
+            reg_v[x] >>= 1;
+            break;
+        case 0x7: //SUBX
+            {
+                uint8_t res = reg_v[y] - reg_v[x];
+                if (res > reg_v[y]) {
+                    reg_v[0xf] = 0x1;
+                }
+                reg_v[x] = res;
+            }
+            break;
+    }
 }
 
 static void op_f(uint8_t op, uint8_t x) 
