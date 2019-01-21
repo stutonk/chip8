@@ -7,9 +7,7 @@
 
 #define CHIP8_QUIT_KEY SDLK_ESCAPE
 #define CHIP8_MEM_SZ 4096
-#define CHIP8_STACK_BOTTOM 0xea0
-#define CHIP8_STACK_TOP 0xeff
-#define CHIP8_PRG_MEM_END CHIP8_STACK_BOTTOM
+#define CHIP8_STACK_SZ 50
 
 void chip8_init(size_t);
 void chip8_reset(void);

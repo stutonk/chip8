@@ -9,10 +9,11 @@
 #define NUMREGS 16
 
 static uint8_t mem[CHIP8_MEM_SZ] = {0};
+static uint16_t stack[CHIP8_STACK_SZ] = {0};
 static uint8_t reg_v[NUMREGS] = {0};
 static uint16_t reg_i = 0;
 static uint16_t pc = 0;
-static uint16_t sp = CHIP8_STACK_BOTTOM;
+static size_t sp = 0;
 
 static void key(uint8_t, uint8_t);
 static void op_0(uint8_t);
@@ -36,7 +37,7 @@ void chip8_reset(void)
     }
     reg_i = 0;
     pc = 0;
-    sp = CHIP8_STACK_BOTTOM;
+    sp = 0;
     screen_cls();
 }
 
@@ -47,7 +48,7 @@ void chip8_destroy(void)
 
 bool chip8_load(uint16_t offset, uint8_t bytes[], size_t num)
 {
-    if (offset + num >= CHIP8_PRG_MEM_END) {
+    if (offset + num >= CHIP8_MEM_SZ) {
         return false;
     }
     memcpy(mem + offset, bytes, num);
@@ -57,7 +58,7 @@ bool chip8_load(uint16_t offset, uint8_t bytes[], size_t num)
 void chip8_execute(uint16_t entry)
 {
     SDL_Event e = {0};
-    for (pc = entry; pc < CHIP8_PRG_MEM_END; pc += INSTR_SZ) {
+    for (pc = entry; pc < CHIP8_MEM_SZ; pc += INSTR_SZ) {
         if (SDL_PollEvent(&e) 
             && e.type == SDL_KEYUP 
             && e.key.keysym.sym == CHIP8_QUIT_KEY
@@ -79,12 +80,11 @@ void chip8_execute(uint16_t entry)
                 pc = addr_operand - INSTR_SZ;
                 break;
             case 0x2: //CALL
-                if (sp > CHIP8_STACK_TOP) {
+                if (sp >= CHIP8_STACK_SZ) {
                     FAIL("stack overflow");
                 }
-                mem[sp] = (pc >> 8);
-                mem[sp+1] = pc & 0x00ff;
-                sp += INSTR_SZ;
+                stack[sp] = pc;
+                ++sp;
                 pc = addr_operand;
                 break;
             case 0x3: //JE
@@ -154,8 +154,11 @@ static void op_0(uint8_t op)
             screen_cls();
             break;
         case 0xee: //RET
-            pc = mem[sp] - INSTR_SZ;
-            sp -= INSTR_SZ;
+            pc = stack[sp];
+            --sp;
+            if (sp > CHIP8_STACK_SZ) {
+                FAIL("stack underflow");
+            }
             break;
         default:
             FAIL("illegal instruction");
@@ -208,6 +211,8 @@ static void op_8(uint8_t op, uint8_t x, uint8_t y)
                 reg_v[x] = res;
             }
             break;
+        default:
+            FAIL("illegal instruction");
     }
 }
 

@@ -2,7 +2,7 @@
 #include "chip8.h"
 #include "util.h"
 
-#define BUF_SZ CHIP8_MEM_SZ-CHIP8_PRG_MEM_END
+#define BUF_SZ CHIP8_MEM_SZ
 
 static uint8_t loop[] = {0x10,0x00};
 
