@@ -5,20 +5,19 @@
 #include "screen.h"
 #include "util.h"
 
-#define INSTR_SZ 2
 #define NUMREGS 16
 
 #define CASE_CHIP8_KEY_RETURN(N) \
     case CHIP8_KEY_ ## N:        \
         return 0x ## N;
 
-static uint8_t mem[CHIP8_MEM_SZ] = {0};
-static uint16_t stack[CHIP8_STACK_SZ] = {0};
-static uint8_t reg_v[NUMREGS] = {0};
-static uint16_t reg_i = 0;
-static uint16_t pc = 0;
-static size_t sp = 0;
-static uint16_t key_state = 0;
+static CHIP8_ADDR g_mem[CHIP8_MEM_SZ] = {0};
+static CHIP8_ADDR g_stack[CHIP8_STACK_SZ] = {0};
+static uint8_t g_regv[NUMREGS] = {0};
+static CHIP8_ADDR g_regi = 0;
+static CHIP8_ADDR g_pc = 0;
+static size_t g_sp = 0;
+static uint16_t g_keystate = 0;
 
 static uint8_t key_to_num(SDL_Keycode);
 static void op_0(uint8_t);
@@ -35,15 +34,15 @@ void chip8_init(size_t scale)
 void chip8_reset(void)
 {
     for (size_t i = 0; i < CHIP8_MEM_SZ; ++i) {
-        mem[i] = 0;
+        g_mem[i] = 0;
     }
     for (size_t i = 0; i < NUMREGS; ++i) {
-        reg_v[i] = 0;
+        g_regv[i] = 0;
     }
-    reg_i = 0;
-    pc = 0;
-    sp = 0;
-    key_state = 0;
+    g_regi = 0;
+    g_pc = 0;
+    g_sp = 0;
+    g_keystate = 0;
     screen_cls();
 }
 
@@ -52,19 +51,19 @@ void chip8_destroy(void)
     screen_destroy();
 }
 
-bool chip8_load(uint16_t offset, uint8_t bytes[], size_t num)
+bool chip8_load(CHIP8_ADDR offset, CHIP8_ADDR img[], size_t num)
 {
     if (offset + num >= CHIP8_MEM_SZ) {
         return false;
     }
-    memcpy(mem + offset, bytes, num);
+    memcpy(g_mem + offset, img, num * sizeof(CHIP8_ADDR));
     return true;
 }
 
-void chip8_execute(uint16_t entry)
+void chip8_execute(CHIP8_ADDR entry)
 {
     SDL_Event e = {0};
-    for (pc = entry; pc < CHIP8_MEM_SZ - INSTR_SZ; pc += INSTR_SZ) {
+    for (g_pc = entry; g_pc < CHIP8_MEM_SZ - 1; ++g_pc) {
         if (SDL_PollEvent(&e)) {
             if (e.type == SDL_KEYUP) {
                 if (e.key.keysym.sym == CHIP8_KEY_QUIT) {
@@ -72,7 +71,7 @@ void chip8_execute(uint16_t entry)
                 }
                 uint8_t keynum = key_to_num(e.key.keysym.sym);
                 if (keynum < CHIP8_NUMKEYS) {
-                    key_state |= (0x1 << keynum);
+                    g_keystate |= (0x1 << keynum);
                 }
             }
             else if (e.type == SDL_QUIT) {
@@ -80,86 +79,86 @@ void chip8_execute(uint16_t entry)
             }
         }
         
-        uint8_t op_hi = mem[pc];
-        uint8_t op_lo = mem[pc+1];
-        uint16_t addr_operand = op_lo + ((op_hi & 0x0f) << 8);
-        size_t reg_operand_x = op_hi & 0x0f;
-        size_t reg_operand_y = op_lo >> 4;
+        uint8_t op_hi = g_mem[g_pc] >> 8;
+        uint8_t op_lo = g_mem[g_pc] & 0x00ff;
+        CHIP8_ADDR addr_operand = g_mem[g_pc] & 0x0fff;
+        size_t xreg = op_hi & 0x0f;
+        size_t yreg = op_lo >> 4;
 
         switch (op_hi >> 4) {
             case 0x0: //CLS, RET
                 op_0(op_lo);
                 break;
             case 0x1: //JMP
-                pc = addr_operand - INSTR_SZ;
+                g_pc = addr_operand - 1;
                 break;
             case 0x2: //CALL
-                if (sp >= CHIP8_STACK_SZ) {
-                    FAIL("stack overflow");
+                if (g_sp >= CHIP8_STACK_SZ) {
+                    FAIL("g_stack overflow");
                 }
-                stack[sp] = pc;
-                ++sp;
-                pc = addr_operand;
+                g_stack[g_sp] = g_pc;
+                ++g_sp;
+                g_pc = addr_operand;
                 break;
             case 0x3: //JE
-                if (reg_v[reg_operand_x] == op_lo) {
-                    pc += INSTR_SZ;
+                if (g_regv[xreg] == op_lo) {
+                    ++g_pc;
                 }
                 break;
             case 0x4: //JNE
-                if (reg_v[reg_operand_x] != op_lo) {
-                    pc += INSTR_SZ;
+                if (g_regv[xreg] != op_lo) {
+                    ++g_pc;
                 }
                 break;
             case 0x5: //JRE
-                if (reg_v[reg_operand_x] == reg_v[reg_operand_y]) {
-                    pc += INSTR_SZ;
+                if (g_regv[xreg] == g_regv[yreg]) {
+                    ++g_pc;
                 }
                 break;
             case 0x6: //SETV
-                reg_v[reg_operand_x] = op_lo;
+                g_regv[xreg] = op_lo;
                 break;
             case 0x7: //ADD
-                reg_v[reg_operand_x] += op_lo;
+                g_regv[xreg] += op_lo;
                 break;
             case 0x8: //Math ops
-                op_8(op_lo & 0x0f, reg_operand_x, reg_operand_y);
+                op_8(op_lo & 0x0f, xreg, yreg);
                 break;
             case 0x9: //JRNE
-                if (reg_v[reg_operand_x] != reg_v[reg_operand_y]) {
-                    pc += INSTR_SZ;
+                if (g_regv[xreg] != g_regv[yreg]) {
+                    ++g_pc;
                 }
                 break;
             case 0xa: //SETI
-                reg_i = addr_operand;
+                g_regi = addr_operand;
                 break;
             case 0xb: //JR0
-                pc = addr_operand + reg_v[0] - INSTR_SZ;
+                g_pc = addr_operand + g_regv[0] - 1;
             case 0xc: //VRND
-                reg_v[reg_operand_x] = op_lo & (rand() % 0xff);
+                g_regv[xreg] = op_lo & (rand() % 0xff);
                 break;
             case 0xd://DRAW
-                reg_v[0x0f] = screen_draw(
-                    reg_v[reg_operand_x],
-                    reg_v[reg_operand_y],
+                g_regv[0x0f] = screen_draw(
+                    g_regv[xreg],
+                    g_regv[yreg],
                     op_lo & 0x0f,
-                    &mem[reg_i]
+                    (uint8_t *)&g_mem[g_regi]
                 );
                 break;
             case 0xe: //Skip if [not] key
                 {
-                    uint16_t xpressed = key_state & (0x1 << reg_operand_x);
+                    CHIP8_ADDR xpressed = g_keystate & (0x1 << xreg);
                     switch (op_lo) {
                         case 0x9e:
                             if (xpressed) {
-                                pc += INSTR_SZ;
-                                key_state = 0;
+                                ++g_pc;
+                                g_keystate = 0;
                             }
                             break;
                         case 0xa1:
                             if (!xpressed) {
-                                pc += INSTR_SZ;
-                                key_state = 0;
+                                ++g_pc;
+                                g_keystate = 0;
                             }
                             break;
                         default:
@@ -169,7 +168,7 @@ void chip8_execute(uint16_t entry)
                 }
                 break;
             case 0xf: //Misc ops
-                op_f(op_lo, reg_operand_x);
+                op_f(op_lo, xreg);
                 break;
             default:
                 FAIL("illegal instruction");
@@ -207,11 +206,11 @@ static void op_0(uint8_t op)
             screen_cls();
             break;
         case 0xee: //RET
-            if (sp >= 0) {
-                FAIL("stack underflow");
+            if (g_sp >= 0) {
+                FAIL("g_stack underflow");
             }
-            pc = stack[sp];
-            --sp;
+            g_pc = g_stack[g_sp];
+            --g_sp;
             break;
         default:
             FAIL("illegal instruction");
@@ -223,40 +222,40 @@ static void op_8(uint8_t op, uint8_t x, uint8_t y)
 {
     switch (op) {
         case 0x0: //ASGN
-            reg_v[x] = reg_v[y];
+            g_regv[x] = g_regv[y];
             break;
         case 0x1: //OR
-            reg_v[x] |= reg_v[y];
+            g_regv[x] |= g_regv[y];
             break;
         case 0x2: //AND
-            reg_v[x] &= reg_v[y];
+            g_regv[x] &= g_regv[y];
             break;
         case 0x3: //XOR
-            reg_v[x] ^= reg_v[y];
+            g_regv[x] ^= g_regv[y];
             break;
         case 0x4: //ADD
             {
-                uint8_t res = reg_v[x] + reg_v[y];
-                reg_v[0xf] = (res < reg_v[x] || res < reg_v[y]) ? 0x1 : 0x0;
-                reg_v[x] = res;
+                uint8_t res = g_regv[x] + g_regv[y];
+                g_regv[0xf] = (res < g_regv[x] || res < g_regv[y]) ? 0x1 : 0x0;
+                g_regv[x] = res;
             }
             break;
         case 0x5: //SUBY
             {
-                uint8_t res = reg_v[x] - reg_v[y];
-                reg_v[0xf] = (res > reg_v[x]) ? 0x1 : 0x0;
-                reg_v[x] = res;
+                uint8_t res = g_regv[x] - g_regv[y];
+                g_regv[0xf] = (res > g_regv[x]) ? 0x1 : 0x0;
+                g_regv[x] = res;
             }
             break;
         case 0x6: //SHR
-            reg_v[0xf] = reg_v[x] & 0xfe;
-            reg_v[x] >>= 1;
+            g_regv[0xf] = g_regv[x] & 0xfe;
+            g_regv[x] >>= 1;
             break;
         case 0x7: //SUBX
             {
-                uint8_t res = reg_v[y] - reg_v[x];
-                reg_v[0xf] = (res > reg_v[y]) ? 0x1 : 0x0;
-                reg_v[x] = res;
+                uint8_t res = g_regv[y] - g_regv[x];
+                g_regv[0xf] = (res > g_regv[y]) ? 0x1 : 0x0;
+                g_regv[x] = res;
             }
             break;
         default:
@@ -278,7 +277,7 @@ static void op_f(uint8_t op, uint8_t x)
                     if (e.type == SDL_KEYUP) {
                         uint8_t keynum = key_to_num(e.key.keysym.sym);
                         if (keynum < CHIP8_NUMKEYS) {
-                            reg_v[x] = keynum;
+                            g_regv[x] = keynum;
                             break;
                         }
                     }
@@ -293,9 +292,9 @@ static void op_f(uint8_t op, uint8_t x)
             break;
         case 0x1e:
             {
-                uint16_t res = reg_i + reg_v[x];
-                reg_v[0xf] = (res < reg_i) ? 0x1 : 0x0;
-                reg_i = res;
+                CHIP8_ADDR res = g_regi + g_regv[x];
+                g_regv[0xf] = (res < g_regi) ? 0x1 : 0x0;
+                g_regi = res;
             }
             break;
         case 0x29: //CHRX

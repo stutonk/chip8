@@ -26,11 +26,12 @@
 #define CHIP8_KEY_B SDLK_c
 #define CHIP8_KEY_F SDLK_v
 
-#define CHIP8_MEM_SZ 4096
+#define CHIP8_ADDR uint16_t
+#define CHIP8_MEM_SZ 4096 / sizeof(CHIP8_ADDR)
 #define CHIP8_STACK_SZ 50
 
 void chip8_init(size_t);
 void chip8_reset(void);
 void chip8_destroy(void);
-bool chip8_load(uint16_t, uint8_t[], size_t);
-void chip8_execute(uint16_t);
+bool chip8_load(uint16_t, CHIP8_ADDR[], size_t);
+void chip8_execute(CHIP8_ADDR);
