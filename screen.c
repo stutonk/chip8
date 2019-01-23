@@ -10,101 +10,101 @@
 #define SCREEN_H_EXP 5
 #define DEFAULT_BG {0x00, 0x00, 0x00, 0xff}
 #define DEFAULT_FG {0xff, 0xff, 0xff, 0xff}
-#define PX_SZ 0x1 << px_scale
+#define PX_SZ 0x1 << g_px_scale
 
-#define SET_COLOR(C) SDL_SetRenderDrawColor(ren, C[0], C[1], C[2], C[3])
+#define SET_COLOR(C) SDL_SetRenderDrawColor(g_ren, C[0], C[1], C[2], C[3])
 #define IDX(X, Y) SCREEN_W * (Y) + (X)
 
-static bool vmem[SCREEN_W * SCREEN_H] = {0};
-static SDL_Window *win = 0;
-static SDL_Renderer *ren = 0;
-static size_t px_scale = 0;
-static uint8_t bg[] = DEFAULT_BG;
-static uint8_t fg[] = DEFAULT_FG;
+static bool g_vmem[SCREEN_W * SCREEN_H] = {0};
+static SDL_Window *g_win = 0;
+static SDL_Renderer *g_ren = 0;
+static size_t g_px_scale = 0;
+static uint8_t g_bg[] = DEFAULT_BG;
+static uint8_t g_fg[] = DEFAULT_FG;
 
 void screen_init(size_t scale)
 {
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
         FAIL(SDL_GetError());
     }
-    px_scale = (scale) ? scale : SCREEN_DEFAULT_SCALE;
-    win = SDL_CreateWindow(
+    g_px_scale = (scale) ? scale : SCREEN_DEFAULT_SCALE;
+    g_win = SDL_CreateWindow(
         SCREEN_WIN_TITLE,
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
-        0x1 << (SCREEN_W_EXP + px_scale),
-        0x1 << (SCREEN_H_EXP + px_scale),
+        0x1 << (SCREEN_W_EXP + g_px_scale),
+        0x1 << (SCREEN_H_EXP + g_px_scale),
         0
     );
-    if (!win) {
+    if (!g_win) {
         FAIL(SDL_GetError());
     }
-    ren = SDL_CreateRenderer(
-        win,
+    g_ren = SDL_CreateRenderer(
+        g_win,
         -1,
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
     );
-    if (!ren) {
+    if (!g_ren) {
         FAIL(SDL_GetError());
     }
-    SET_COLOR(bg);
-    SDL_RenderClear(ren);
-    SDL_RenderPresent(ren);
+    SET_COLOR(g_bg);
+    SDL_RenderClear(g_ren);
+    SDL_RenderPresent(g_ren);
 }
 
 void screen_cls(void)
 {
     for (size_t i = 0; i < SCREEN_H * SCREEN_W; ++i) {
-        vmem[i] = false;
+        g_vmem[i] = false;
     }
-    if (ren) {
-        SET_COLOR(bg);
-        SDL_RenderClear(ren);
-        SDL_RenderPresent(ren);
+    if (g_ren) {
+        SET_COLOR(g_bg);
+        SDL_RenderClear(g_ren);
+        SDL_RenderPresent(g_ren);
     }
 }
 
 uint8_t screen_draw(uint8_t x, uint8_t y, uint8_t h, uint8_t const spr[h])
 {
-    if (ren) {
-        SET_COLOR(bg);
-        SDL_RenderClear(ren);
+    if (g_ren) {
+        SET_COLOR(g_bg);
+        SDL_RenderClear(g_ren);
     }
     uint8_t changed = 0x0;
     size_t xpos = x;
     for (size_t i = 0; i < h; ++i, xpos = x) {
         for (size_t j = SPRITE_W - 1; j < SPRITE_W; --j, ++xpos) {
             uint8_t sbit = (spr[i] & (0x1 << j)) >> j;
-            uint8_t vbit = vmem[IDX(xpos, y + i)];
-            vmem[IDX(xpos, y + i)] = sbit ^ vbit;
+            uint8_t vbit = g_vmem[IDX(xpos, y + i)];
+            g_vmem[IDX(xpos, y + i)] = sbit ^ vbit;
             changed = changed | (sbit & vbit);
         }
     }
-    SET_COLOR(fg);
+    SET_COLOR(g_fg);
     for (size_t i = 0; i < SCREEN_H; ++i) {
         for (size_t j = 0; j < SCREEN_W; ++j) {
-            if (vmem[IDX(j, i)]) {
+            if (g_vmem[IDX(j, i)]) {
                 SDL_Rect r = {
                     .x = j * PX_SZ,
                     .y = i * PX_SZ,
                     .w = PX_SZ,
                     .h = PX_SZ,
                 };
-                SDL_RenderFillRect(ren, &r);
+                SDL_RenderFillRect(g_ren, &r);
             }
         }
     }
-    SDL_RenderPresent(ren);
+    SDL_RenderPresent(g_ren);
     return changed;
 }
 
 void screen_destroy(void)
 {
-    if (win) {
-        SDL_DestroyWindow(win);
+    if (g_win) {
+        SDL_DestroyWindow(g_win);
     }
-    if (ren) {
-        SDL_DestroyRenderer(ren);
+    if (g_ren) {
+        SDL_DestroyRenderer(g_ren);
     }
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
