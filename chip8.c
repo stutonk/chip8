@@ -1,3 +1,52 @@
+/*
+    Table of Opcodes
+    00e0    CLS                 Clear the screen
+    00ee    RET                 Return from subroutine
+    1nnn    GOTO    nnn         goto nnn
+    2nnn    CALL    nnn         Call subroutine at addr nnn
+    3xnn    JE      vx  nn      Skip next instr if vx == nn
+    4xnn    JNE     vx  nn      Skip next instr if vx != nn
+    5xy0    CMP     vx  vy      Skip next instr if vx == vy
+    6xnn    SETV    vx  nn      vx = nn
+    7xnn    ADD     vx  nn      vx += nn
+    8xy0    COPY    vx  vy      vx = vy
+    8xy1    OR      vx  vy      vx = vx | vy
+    8xy2    AND     vx  vy      vx = vx & vy
+    8xy3    XOR     vx  vy      vx = vx ^ vy
+    8xy4    ADDC    vx  vy  vf* vx += vy; vf = (carry) ? 1 : 0
+    8xy5    SYBY    vx  vy  vf* vx -= vy; vf = (carry) ? 1 : 0
+    8x_6    SHR     vx  vf*     vx >>= 1; vf = vx & 0x01
+    8xy7    SUBX    vx  vy  vf* vx = yv - vx; vf = (carry) ? 1 : 0
+    8x_e    SHL     vx  vf*     vx <<= 1; vf = (vx & 0x80) >> 7
+    9xy0    NCMP    vx  vy      Skip next inst if vx != vy
+    annn    SETI    nnn i*      i = nnn
+    bnnn    JAR0    nnn         pc = nnn + v0
+    cxnn    VRND    vx  nn      vx = rand() & nn
+    dxyn    DRAW    vx  vy  n   Draw sprite starting addr i at x, y with
+                                width 8 and height n
+    ex93    KYEQ    vx          Skip next instr if key in vx was pressed
+    exa1    KYNE    vx          Skip next instr if key in vs wasn't pressed
+    fx07    GDEL    vx          Set vx to value of delay timer
+    fx0a    GKEY    vx          vx = Halt and wait for keypress
+    fx15    SDEL    vx          Set delay timer to value in vx
+    fx18    SSND    vx          Set sound timer to value in vx
+    fx1e    ADDI    vx  i*      i += vx
+    fx29    CHRX    vx          Set i to the addr of the sprite corresponding
+                                to the character in vx
+    fx33    BCD     vx          Stores binary-coded decimal representation of
+                                the number in vx in three consecutive addrs
+                                starting at addr i; big-endian
+    fx55    REGD    x   i*      Dump registers 0-x inclusive into memory
+                                starting at addr i
+    fx65    REGL    x   i*      Load registers 0-x inclusive from memory
+                                starting at addr i
+    * implicit operand
+
+    Timers
+    There are two timers, delay and sound. Both timers, when set, tick 
+    toward zero at a rate of 60hz. The delay timer is a general-purpose
+    timer whereas the sound timer makes a noise when it reaches zero.
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -144,12 +193,12 @@ void chip8_execute(uint16_t entry)
             case 0x0: //CLS, RET
                 op_0(op_lo);
                 break;
-            case 0x1: //JMP
+            case 0x1: //GOTO
                 g_pc = addr_operand - 2;
                 break;
             case 0x2: //CALL
                 if (g_sp >= CHIP8_STACK_SZ) {
-                    FAIL("g_stack overflow");
+                    FAIL("stack overflow");
                 }
                 g_stack[g_sp] = g_pc;
                 ++g_sp;
@@ -165,7 +214,7 @@ void chip8_execute(uint16_t entry)
                     g_pc += 2;
                 }
                 break;
-            case 0x5: //JRE
+            case 0x5: //CMP
                 if (g_v[xreg] == g_v[yreg]) {
                     g_pc += 2;
                 }
@@ -179,7 +228,7 @@ void chip8_execute(uint16_t entry)
             case 0x8: //Math ops
                 op_8(op_lo & 0x0f, xreg, yreg);
                 break;
-            case 0x9: //JRNE
+            case 0x9: //NCMP
                 if (g_v[xreg] != g_v[yreg]) {
                     g_pc += 2;
                 }
@@ -187,7 +236,7 @@ void chip8_execute(uint16_t entry)
             case 0xa: //SETI
                 g_i = addr_operand;
                 break;
-            case 0xb: //JR0
+            case 0xb: //JAR0
                 g_pc = addr_operand + g_v[0] - 2;
             case 0xc: //VRND
                 g_v[xreg] = op_lo & (rand() % 0xff);
@@ -262,7 +311,7 @@ static void op_0(uint8_t op)
             break;
         case 0xee: //RET
             if (g_sp <= 0) {
-                FAIL("g_stack underflow");
+                FAIL("stack underflow");
             }
             --g_sp;
             g_pc = g_stack[g_sp];
@@ -276,7 +325,7 @@ static void op_0(uint8_t op)
 static void op_8(uint8_t op, uint8_t x, uint8_t y) 
 {
     switch (op) {
-        case 0x0: //ASGN
+        case 0x0: //COPY
             g_v[x] = g_v[y];
             break;
         case 0x1: //OR
@@ -288,7 +337,7 @@ static void op_8(uint8_t op, uint8_t x, uint8_t y)
         case 0x3: //XOR
             g_v[x] ^= g_v[y];
             break;
-        case 0x4: //ADD
+        case 0x4: //ADDC
             {
                 uint8_t res = g_v[x] + g_v[y];
                 g_v[0xf] = (res < g_v[x] || res < g_v[y]) ? 0x1 : 0x0;
@@ -312,6 +361,10 @@ static void op_8(uint8_t op, uint8_t x, uint8_t y)
                 g_v[0xf] = (res > g_v[y]) ? 0x1 : 0x0;
                 g_v[x] = res;
             }
+            break;
+        case 0xe: //SHL
+            g_v[0xf] = (g_v[x] & 0x80) >> 7;
+            g_v[x] <<= 1;
             break;
         default:
             FAIL("illegal instruction");
@@ -347,7 +400,7 @@ static void op_f(uint8_t op, uint8_t x)
         case 0x18: //SSND
             puts("warning: sound not implemented");
             break;
-        case 0x1e:
+        case 0x1e: //ADDI
             {
                 uint8_t res = g_i + g_v[x];
                 g_v[0xf] = (res < g_i) ? 0x1 : 0x0;
@@ -358,8 +411,17 @@ static void op_f(uint8_t op, uint8_t x)
             g_i = CHIP8_MEM_SZ + g_v[x]*5;
             break;
         case 0x33: //BCD
-            FAIL("BCD unimplemented");
-            break;
+            if (g_i > CHIP8_MEM_SZ - 3) {
+                FAIL("BCD causes memory overflow");
+            }
+            {
+                uint8_t res = g_v[x];
+                g_mem[g_i] = res / 100;
+                res %= 100;
+                g_mem[g_i + 1] = res / 10;
+                g_mem[g_i + 2] = res % 10;
+            }
+                break;
         case 0x55: //REGD
             printf("%03x %02x\n", g_i, x);
             if (g_i + x + 1 >= CHIP8_MEM_SZ) {
