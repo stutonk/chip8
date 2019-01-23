@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "chip8.h"
 #include "screen.h"
 #include "util.h"
@@ -103,7 +104,14 @@ bool chip8_load(uint16_t offset, uint8_t const img[], size_t num)
 void chip8_execute(uint16_t entry)
 {
     SDL_Event e = {0};
+    time_t prevtime = time(NULL);
     for (g_pc = entry; g_pc < CHIP8_MEM_SZ - 2; g_pc += 2) {
+        time_t currtime = time(NULL);
+        if (difftime(currtime, prevtime) >= 1.0 && g_delay > 0) {
+            --g_delay;
+        }
+        prevtime = currtime;
+
         if (SDL_PollEvent(&e)) {
             if (e.type == SDL_KEYUP) {
                 if (e.key.keysym.sym == KEY_QUIT) {
@@ -121,7 +129,7 @@ void chip8_execute(uint16_t entry)
         
         uint8_t op_hi = g_mem[g_pc];
         uint8_t op_lo = g_mem[g_pc + 1];
-        uint8_t addr_operand = op_lo + ((op_hi & 0x0f) << 8);
+        uint16_t addr_operand = ((op_hi & 0x0f) << 8) + op_lo;
         size_t xreg = op_hi & 0x0f;
         size_t yreg = op_lo >> 4;
 
@@ -315,7 +323,7 @@ static void op_f(uint8_t op, uint8_t x)
 {
     switch (op) {
         case 0x07: //GDEL
-            FAIL("unimplemented");
+            g_v[x] = g_delay;
             break;
         case 0x0a: //GKEY
             {
@@ -334,10 +342,10 @@ static void op_f(uint8_t op, uint8_t x)
                 break;
             }
         case 0x15: //SDEL
-            FAIL("unimplemented");
+            g_delay = g_v[x];
             break;
         case 0x18: //SSND
-            FAIL("unimplemented");
+            puts("warning: sound not implemented");
             break;
         case 0x1e:
             {
@@ -350,13 +358,24 @@ static void op_f(uint8_t op, uint8_t x)
             g_i = CHIP8_MEM_SZ + g_v[x]*5;
             break;
         case 0x33: //BCD
-            FAIL("unimplemented");
+            FAIL("BCD unimplemented");
             break;
         case 0x55: //REGD
-            FAIL("unimplemented");
+            printf("%03x %02x\n", g_i, x);
+            if (g_i + x + 1 >= CHIP8_MEM_SZ) {
+                FAIL("REGD causes memory overflow");
+            }
+            for (size_t i = 0; i <= x; ++i) {
+                g_mem[g_i + i] = g_v[i];
+            }
             break;
         case 0x65: //REGL
-            FAIL("unimplemented");
+            if (g_i + x + 1 >= CHIP8_MEM_SZ) {
+                FAIL("REGL accesses illegal address");
+            }
+            for (size_t i = 0; i <= x; ++i) {
+                g_v[i] = g_mem[g_i + i];
+            }
             break;
         default:
             FAIL("illegal instruction");
