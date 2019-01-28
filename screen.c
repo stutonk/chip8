@@ -13,9 +13,8 @@
 #define PX_SZ 0x1 << g_px_scale
 
 #define SET_COLOR(C) SDL_SetRenderDrawColor(g_ren, C[0], C[1], C[2], C[3])
-#define IDX(X, Y) SCREEN_W * (Y) + (X)
 
-static bool g_vmem[SCREEN_W * SCREEN_H] = {0};
+static bool g_vmem[SCREEN_H][SCREEN_W] = {0};
 static SDL_Window *g_win = 0;
 static SDL_Renderer *g_ren = 0;
 static size_t g_px_scale = 0;
@@ -54,8 +53,10 @@ void screen_init(size_t scale)
 
 void screen_cls(void)
 {
-    for (size_t i = 0; i < SCREEN_H * SCREEN_W; ++i) {
-        g_vmem[i] = false;
+    for (size_t i = 0; i < SCREEN_H; ++i) {
+        for (size_t j = 0; j < SCREEN_W; ++j) {
+            g_vmem[i][j] = false;
+        }
     }
     if (g_ren) {
         SET_COLOR(g_bg);
@@ -74,16 +75,18 @@ uint8_t screen_draw(uint8_t x, uint8_t y, uint8_t h, uint8_t const spr[h])
     size_t xpos = x;
     for (size_t i = 0; i < h; ++i, xpos = x) {
         for (size_t j = SPRITE_W - 1; j < SPRITE_W; --j, ++xpos) {
+            uint8_t _x = xpos % SCREEN_W;
+            uint8_t _y = (y + i) % SCREEN_H;
             uint8_t sbit = (spr[i] & (0x1 << j)) >> j;
-            uint8_t vbit = g_vmem[IDX(xpos, y + i)];
-            g_vmem[IDX(xpos, y + i)] = sbit ^ vbit;
+            uint8_t vbit = g_vmem[_y][_x];
+            g_vmem[_y][_x] = sbit ^ vbit;
             changed = changed | (sbit & vbit);
         }
     }
     SET_COLOR(g_fg);
     for (size_t i = 0; i < SCREEN_H; ++i) {
         for (size_t j = 0; j < SCREEN_W; ++j) {
-            if (g_vmem[IDX(j, i)]) {
+            if (g_vmem[i][j]) {
                 SDL_Rect r = {
                     .x = j * PX_SZ,
                     .y = i * PX_SZ,
