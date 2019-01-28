@@ -2,43 +2,43 @@
     Table of Opcodes
     00e0    CLS                 Clear the screen
     00ee    RET                 Return from subroutine
-    1nnn    GOTO    nnn         goto nnn
+    1nnn    JP    nnn           goto nnn
     2nnn    CALL    nnn         Call subroutine at addr nnn
-    3xnn    JE      vx  nn      Skip next instr if vx == nn
-    4xnn    JNE     vx  nn      Skip next instr if vx != nn
-    5xy0    CMP     vx  vy      Skip next instr if vx == vy
-    6xnn    SETV    vx  nn      vx = nn
+    3xnn    SE      vx  nn      Skip next instr if vx == nn
+    4xnn    SNE     vx  nn      Skip next instr if vx != nn
+    5xy0    SRE     vx  vy      Skip next instr if vx == vy
+    6xnn    LD    vx  nn        vx = nn
     7xnn    ADD     vx  nn      vx += nn
-    8xy0    COPY    vx  vy      vx = vy
+    8xy0    MV    vx  vy        vx = vy
     8xy1    OR      vx  vy      vx = vx | vy
     8xy2    AND     vx  vy      vx = vx & vy
     8xy3    XOR     vx  vy      vx = vx ^ vy
-    8xy4    ADDC    vx  vy  vf* vx += vy; vf = (carry) ? 1 : 0
-    8xy5    SYBY    vx  vy  vf* vx -= vy; vf = (carry) ? 1 : 0
+    8xy4    ADDR    vx  vy  vf* vx += vy; vf = (carry) ? 1 : 0
+    8xy5    SUBY    vx  vy  vf* vx -= vy; vf = (carry) ? 1 : 0
     8x_6    SHR     vx  vf*     vx >>= 1; vf = vx & 0x01
     8xy7    SUBX    vx  vy  vf* vx = yv - vx; vf = (carry) ? 1 : 0
     8x_e    SHL     vx  vf*     vx <<= 1; vf = (vx & 0x80) >> 7
-    9xy0    RNEQ    vx  vy      Skip next inst if vx != vy
-    annn    SETI    nnn i*      i = nnn
-    bnnn    JAR0    nnn         pc = nnn + v0
-    cxnn    VRND    vx  nn      vx = rand() & nn
+    9xy0    SRNE    vx  vy      Skip next inst if vx != vy
+    annn    LDI     nnn i*      i = nnn
+    bnnn    JMPI    nnn         pc = nnn + v0
+    cxnn    RAND    vx  nn      vx = rand() & nn
     dxyn    DRAW    vx  vy  n   Draw sprite starting addr i at x, y with
                                 width 8 and height n
-    ex93    KYEQ    vx          Skip next instr if key in vx was pressed
-    exa1    KYNE    vx          Skip next instr if key in vs wasn't pressed
-    fx07    GDEL    vx          Set vx to value of delay timer
-    fx0a    GKEY    vx          vx = Halt and wait for keypress
-    fx15    SDEL    vx          Set delay timer to value in vx
-    fx18    SSND    vx          Set sound timer to value in vx
+    ex93    SKP     vx          Skip next instr if key in vx was pressed
+    exa1    SKNP    vx          Skip next instr if key in vs wasn't pressed
+    fx07    MVD     vx          Set vx to value of delay timer
+    fx0a    KEY     vx          vx = Halt and wait for keypress
+    fx15    LDD     vx          Set delay timer to value in vx
+    fx18    LDS     vx          Set sound timer to value in vx
     fx1e    ADDI    vx  i*      i += vx
-    fx29    CHRX    vx          Set i to the addr of the sprite corresponding
+    fx29    LDSP    vx          Set i to the addr of the sprite corresponding
                                 to the character in vx
     fx33    BCD     vx          Stores binary-coded decimal representation of
                                 the number in vx in three consecutive addrs
                                 starting at addr i; big-endian
-    fx55    REGD    x   i*      Dump registers 0-x inclusive into memory
+    fx55    STOR    x   i*      Dump registers 0-x inclusive into memory
                                 starting at addr i
-    fx65    REGL    x   i*      Load registers 0-x inclusive from memory
+    fx65    READ    x   i*      Load registers 0-x inclusive from memory
                                 starting at addr i
     * implicit operand
 */
@@ -157,7 +157,7 @@ void chip8_execute(uint16_t entry)
                         break;
                 }
                 break;
-            case 0x1: //GOTO
+            case 0x1: //JP
                 Pc = op_addr - 2;
                 break;
             case 0x2: //CALL
@@ -168,28 +168,28 @@ void chip8_execute(uint16_t entry)
                 ++Sp;
                 Pc = op_addr - 2;
                 break;
-            case 0x3: //JE
+            case 0x3: //SE
                 if (V[op_x] == op_lo) {
                     Pc += 2;
                 }
                 break;
-            case 0x4: //JNE
+            case 0x4: //SNE
                 if (V[op_x] != op_lo) {
                     Pc += 2;
                 }
                 break;
-            case 0x5: //CMP
+            case 0x5: //SRNE
                 if (V[op_x] == V[op_y]) {
                     Pc += 2;
                 }
                 break;
-            case 0x6: //SETV
+            case 0x6: //LD
                 V[op_x] = op_lo;
                 break;
-            case 0x7: //ADDV
+            case 0x7: //ADD
                 V[op_x] += op_lo;
                 break;
-            case 0x8: //Math ops
+            case 0x8:
                 switch (op_lo & 0x0f) {
                     case 0x0: //RCPY
                         V[op_x] = V[op_y];
@@ -203,7 +203,7 @@ void chip8_execute(uint16_t entry)
                     case 0x3: //XOR
                         V[op_x] ^= V[op_y];
                         break;
-                    case 0x4: //ADDC
+                    case 0x4: //ADDR
                         V[0xf] = ((int)V[op_x] + (int)V[op_y] > 0xff) ? 
                             0x1 : 0x0;
                         V[op_x] = V[op_x] + V[op_y];
@@ -229,17 +229,17 @@ void chip8_execute(uint16_t entry)
                         break;
                 }
                 break;
-            case 0x9: //RNEQ
+            case 0x9: //SRNE
                 if (V[op_x] != V[op_y]) {
                     Pc += 2;
                 }
                 break;
-            case 0xa: //SETI
+            case 0xa: //LDI
                 I = op_addr;
                 break;
-            case 0xb: //JAR0
+            case 0xb: //JMPI
                 Pc = op_addr + V[0] - 2;
-            case 0xc: //VRND
+            case 0xc: //RAND
                 V[op_x] = op_lo & (rand() % 0xff);
                 break;
             case 0xd://DRAW
@@ -252,35 +252,35 @@ void chip8_execute(uint16_t entry)
                 break;
             case 0xe:
                 switch (op_lo) {
-                    case 0x9e: //SKE
+                    case 0x9e: //SKP
                         Pc += (input_query(V[op_x])) ? 2 : 0;
                         break;
-                    case 0xa1: //SKNE
+                    case 0xa1: //SKNP
                         Pc += (input_query(V[op_x])) ? 0 : 2;
                         break;
                     default:
                         goto unrecognized;
                 }
                 break;
-            case 0xf: //Misc ops
+            case 0xf:
                 switch (op_lo) {
-                    case 0x07: //GDEL
+                    case 0x07: //MVD
                         V[op_x] = timer_get_delay();
                         break;
-                    case 0x0a: //GKEY
+                    case 0x0a: //KEY
                         V[op_x] = input_get_key();
                         break;
-                    case 0x15: //SDEL
+                    case 0x15: //LDD
                         timer_set_delay(V[op_x]);
                         break;
-                    case 0x18: //SSND
+                    case 0x18: //LDS
                         timer_set_sound(V[op_x]);
                         break;
                     case 0x1e: //ADDI
                         V[0xf] = (I + V[op_x] > 0xfff) ? 0x1 : 0x0;
                         I += V[op_x];
                         break;
-                    case 0x29: //CHRX
+                    case 0x29: //LDSP
                         I = CHIP8_MEM_SZ + V[op_x]*5;
                         break;
                     case 0x33: //BCD
@@ -295,7 +295,7 @@ void chip8_execute(uint16_t entry)
                             Mem[I + 2] = res % 10;
                         }
                             break;
-                    case 0x55: //REGD
+                    case 0x55: //STOR
                         if (I + op_x + 1 >= CHIP8_MEM_SZ) {
                             FAIL("REGD causes memory overflow");
                         }
@@ -303,7 +303,7 @@ void chip8_execute(uint16_t entry)
                             Mem[I + i] = V[i];
                         }
                         break;
-                    case 0x65: //REGL
+                    case 0x65: //READ
                         if (I + op_x + 1 >= CHIP8_MEM_SZ) {
                             FAIL("REGL accesses illegal address");
                         }
