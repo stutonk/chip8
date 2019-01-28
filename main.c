@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <unistd.h>
 #include "chip8.h"
 #include "util.h"
 
@@ -19,23 +20,64 @@ static const uint8_t no_prog[] = {
 
 int main(int argc, char *argv[argc+1])
 {
+    extern char *optarg;
+    extern int optind, optopt;
+    int opt = 0;
+    size_t scale = 0;
+    uint16_t entry = CHIP8_DEFAULT_ENTRY;
+
+    while ((opt = getopt(argc, argv, ":e:s:")) != -1) {
+        switch (opt) {
+            case 'e':
+                {
+                    long earg = 0;
+                    if (optarg[0] == '0') {
+                        earg = strtol(optarg, NULL, 0);
+                    } else {
+                        earg = strtol(optarg, NULL, 10);
+                    }
+                    if (earg > CHIP8_MEM_SZ - 2 || earg < 0) {
+                        FAIL("illegal entry address");
+                    }
+                    entry = earg;
+                }
+                break;
+            case 's':
+                scale = atoi(optarg);
+                break;
+            case ':':
+                fprintf(stderr, "Option -%c requires an argument.\n", optopt);
+                goto usage;
+            case '?':
+                fprintf(stderr, "Unrecognized option `%c.\n", optopt);
+                goto usage;
+        }
+    }
+
     if (SDL_Init(0) != 0) {
         FAIL(SDL_GetError());
     }
     atexit(SDL_Quit);
-    /* getopt for scale, entry point */
-    chip8_init(0);
-    if (argc > 1) {
+    chip8_init(scale);
+
+    if (optind < argc) {
         uint8_t buf[CHIP8_MEM_SZ] = {0};
-        FILE *in = fopen(argv[1], "rb");
+        FILE *in = fopen(argv[optind], "rb");
         size_t bytes_in = fread(buf, sizeof(uint8_t), CHIP8_MEM_SZ, in);
+        // possible source of errors
         if (!feof(in)) {
             FAIL("input file overflows available program memory");
         }
-        chip8_load(0, buf, bytes_in);
+        chip8_load(CHIP8_DEFAULT_ENTRY, buf, bytes_in);
     } else {
         chip8_load(0, no_prog, sizeof(no_prog));
+        entry = 0;
     }
-    chip8_execute(0);
+    chip8_execute(entry);
     chip8_destroy();
+    return EXIT_SUCCESS;
+usage:
+    printf("Usage: %s [-s scale] [-e entry_point] path/to/chip8/rom\n", 
+            argv[0]);
+    return EXIT_FAILURE;
 }
