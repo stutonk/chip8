@@ -7,6 +7,7 @@
 
 #define CHIP8_MEM_SZ 4096
 #define CHIP8_STACK_SZ 24
+#define CHIP8_DEFAULT_ENTRY 0x200
 
 void chip8_init(size_t);
 void chip8_reset(void);

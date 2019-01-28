@@ -18,7 +18,7 @@
     8x_6    SHR     vx  vf*     vx >>= 1; vf = vx & 0x01
     8xy7    SUBX    vx  vy  vf* vx = yv - vx; vf = (carry) ? 1 : 0
     8x_e    SHL     vx  vf*     vx <<= 1; vf = (vx & 0x80) >> 7
-    9xy0    NCMP    vx  vy      Skip next inst if vx != vy
+    9xy0    RNEQ    vx  vy      Skip next inst if vx != vy
     annn    SETI    nnn i*      i = nnn
     bnnn    JAR0    nnn         pc = nnn + v0
     cxnn    VRND    vx  nn      vx = rand() & nn
@@ -41,43 +41,17 @@
     fx65    REGL    x   i*      Load registers 0-x inclusive from memory
                                 starting at addr i
     * implicit operand
-
-    Timers
-    There are two timers, delay and sound. Both timers, when set, tick 
-    toward zero at a rate of 60hz. The delay timer is a general-purpose
-    timer whereas the sound timer makes a noise when it reaches zero.
 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include "chip8.h"
+#include "input.h"
 #include "screen.h"
+#include "timer.h"
 #include "util.h"
 
 #define NUMREGS 16
-#define NUMKEYS 16
-#define KEY_1 SDLK_1
-#define KEY_2 SDLK_2
-#define KEY_3 SDLK_3
-#define KEY_C SDLK_4
-#define KEY_4 SDLK_q
-#define KEY_5 SDLK_w
-#define KEY_6 SDLK_e
-#define KEY_D SDLK_r
-#define KEY_7 SDLK_a
-#define KEY_8 SDLK_s
-#define KEY_9 SDLK_d
-#define KEY_E SDLK_f
-#define KEY_A SDLK_z
-#define KEY_0 SDLK_x
-#define KEY_B SDLK_c
-#define KEY_F SDLK_v
-#define KEY_QUIT SDLK_ESCAPE
-
-#define CASE_KEY_RETURN(N) \
-    case KEY_ ## N:        \
-        return 0x ## N;
 
 #define FONTSET_SZ 80
 static const uint8_t fontset[FONTSET_SZ] = { 
@@ -99,40 +73,33 @@ static const uint8_t fontset[FONTSET_SZ] = {
   0xf0, 0x80, 0xf0, 0x80, 0x80  // F
 };
 
-static uint8_t g_mem[CHIP8_MEM_SZ + FONTSET_SZ] = {0};
-static uint16_t g_stack[CHIP8_STACK_SZ] = {0};
-static uint8_t g_v[NUMREGS] = {0};
-static uint16_t g_i = 0;
-static uint16_t g_pc = 0;
-static size_t g_sp = 0;
-static uint16_t g_keystate = 0;
-static uint8_t g_delay = 0;
-
-static uint8_t key_to_num(SDL_Keycode);
-static void op_0(uint8_t);
-static void op_8(uint8_t, uint8_t, uint8_t);
-static void op_f(uint8_t, uint8_t);
+static uint8_t Mem[CHIP8_MEM_SZ + FONTSET_SZ] = {0};
+static uint16_t Stack[CHIP8_STACK_SZ] = {0};
+static uint8_t V[NUMREGS] = {0};
+static uint16_t I = 0;
+static uint16_t Pc = 0;
+static size_t Sp = 0;
 
 void chip8_init(size_t scale) 
 {
     chip8_reset();
-    memcpy(&g_mem[CHIP8_MEM_SZ], fontset, FONTSET_SZ);
+    memcpy(&Mem[CHIP8_MEM_SZ], fontset, FONTSET_SZ);
     scale = (scale) ? scale : SCREEN_DEFAULT_SCALE;
     screen_init(scale);
+    timer_init();
 }
 
 void chip8_reset(void)
 {
     for (size_t i = 0; i < CHIP8_MEM_SZ; ++i) {
-        g_mem[i] = 0;
+        Mem[i] = 0;
     }
     for (size_t i = 0; i < NUMREGS; ++i) {
-        g_v[i] = 0;
+        V[i] = 0;
     }
-    g_i = 0;
-    g_pc = 0;
-    g_sp = 0;
-    g_keystate = 0;
+    I = 0;
+    Pc = 0;
+    Sp = 0;
     screen_cls();
 }
 
@@ -146,301 +113,217 @@ bool chip8_load(uint16_t offset, uint8_t const img[], size_t num)
     if (offset + num >= CHIP8_MEM_SZ) {
         return false;
     }
-    memcpy(g_mem + offset, img, num);
+    memcpy(Mem + offset, img, num);
     return true;
 }
 
 void chip8_execute(uint16_t entry)
 {
-    SDL_Event e = {0};
-    time_t prevtime = time(NULL);
-    for (g_pc = entry; g_pc < CHIP8_MEM_SZ - 2; g_pc += 2) {
-        time_t currtime = time(NULL);
-        if (difftime(currtime, prevtime) >= 1.0 && g_delay > 0) {
-            --g_delay;
-        }
-        prevtime = currtime;
-
-        if (SDL_PollEvent(&e)) {
-            if (e.type == SDL_KEYUP) {
-                if (e.key.keysym.sym == KEY_QUIT) {
-                    return;
-                }
-                uint8_t keynum = key_to_num(e.key.keysym.sym);
-                if (keynum < NUMKEYS) {
-                    g_keystate |= (0x1 << keynum);
-                }
-            }
-            else if (e.type == SDL_QUIT) {
-                return;
-            }
-        }
+    for (Pc = entry; Pc < CHIP8_MEM_SZ - 2; Pc += 2) {
+        timer_update();
+        input_update();
         
-        uint8_t op_hi = g_mem[g_pc];
-        uint8_t op_lo = g_mem[g_pc + 1];
-        uint16_t addr_operand = ((op_hi & 0x0f) << 8) + op_lo;
-        size_t xreg = op_hi & 0x0f;
-        size_t yreg = op_lo >> 4;
+        uint8_t op_hi = Mem[Pc];
+        uint8_t op_lo = Mem[Pc + 1];
+        uint16_t op_addr = ((op_hi & 0x0f) << 8) + op_lo;
+        size_t op_x = op_hi & 0x0f;
+        size_t op_y = op_lo >> 4;
 
 #ifdef TRACE
         printf(
-            "%03x: (%02x %02x) x %lx, y %lx, addr %03x\n",
-            g_pc, op_hi, op_lo, xreg, yreg, addr_operand
+            "%03x: (%02x %02x) -- %03x -- [%02x %02x %02x %02x %02x %02x "
+                "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x] "
+                "delay %d\n",
+            Pc, op_hi, op_lo, I, V[0], V[1], V[2], V[3], V[4],
+            V[5], V[6], V[7], V[8], V[9], V[10], V[11], V[12],
+            V[13], V[14], V[15], Delay
         );
 #endif
-
         switch (op_hi >> 4) {
-            case 0x0: //CLS, RET
-                op_0(op_lo);
+            case 0x0:
+                switch (op_lo) {
+                    case 0xe0: //CLS
+                        screen_cls();
+                        break;
+                    case 0xee: //RET
+                        if (Sp <= 0) {
+                            FAIL("stack underflow");
+                        }
+                        --Sp;
+                        Pc = Stack[Sp];
+                        break;
+                    default:
+                        goto unrecognized;
+                        break;
+                }
                 break;
             case 0x1: //GOTO
-                g_pc = addr_operand - 2;
+                Pc = op_addr - 2;
                 break;
             case 0x2: //CALL
-                if (g_sp >= CHIP8_STACK_SZ) {
+                if (Sp >= CHIP8_STACK_SZ) {
                     FAIL("stack overflow");
                 }
-                g_stack[g_sp] = g_pc;
-                ++g_sp;
-                g_pc = addr_operand - 2;
+                Stack[Sp] = Pc;
+                ++Sp;
+                Pc = op_addr - 2;
                 break;
             case 0x3: //JE
-                if (g_v[xreg] == op_lo) {
-                    g_pc += 2;
+                if (V[op_x] == op_lo) {
+                    Pc += 2;
                 }
                 break;
             case 0x4: //JNE
-                if (g_v[xreg] != op_lo) {
-                    g_pc += 2;
+                if (V[op_x] != op_lo) {
+                    Pc += 2;
                 }
                 break;
             case 0x5: //CMP
-                if (g_v[xreg] == g_v[yreg]) {
-                    g_pc += 2;
+                if (V[op_x] == V[op_y]) {
+                    Pc += 2;
                 }
                 break;
             case 0x6: //SETV
-                g_v[xreg] = op_lo;
+                V[op_x] = op_lo;
                 break;
-            case 0x7: //ADD
-                g_v[xreg] += op_lo;
+            case 0x7: //ADDV
+                V[op_x] += op_lo;
                 break;
             case 0x8: //Math ops
-                op_8(op_lo & 0x0f, xreg, yreg);
+                switch (op_lo & 0x0f) {
+                    case 0x0: //RCPY
+                        V[op_x] = V[op_y];
+                        break;
+                    case 0x1: //OR
+                        V[op_x] |= V[op_y];
+                        break;
+                    case 0x2: //AND
+                        V[op_x] &= V[op_y];
+                        break;
+                    case 0x3: //XOR
+                        V[op_x] ^= V[op_y];
+                        break;
+                    case 0x4: //ADDC
+                        V[0xf] = ((int)V[op_x] + (int)V[op_y] > 0xff) ? 
+                            0x1 : 0x0;
+                        V[op_x] = V[op_x] + V[op_y];
+                        break;
+                    case 0x5: //SUBY
+                        V[0xf] = (V[op_x] > V[op_y]) ? 0x1 : 0x0;
+                        V[op_x] = V[op_x] - V[op_y];
+                        break;
+                    case 0x6: //SHR
+                        V[0xf] = V[op_x] & 0xfe;
+                        V[op_x] >>= 1;
+                        break;
+                    case 0x7: //SUBX
+                        V[0xf] = (V[op_y] > V[op_x]) ? 0x1 : 0x0;
+                        V[op_x] = V[op_y] - V[op_x];
+                        break;
+                    case 0xe: //SHL
+                        V[0xf] = (V[op_x] & 0x80) >> 7;
+                        V[op_x] <<= 1;
+                        break;
+                    default:
+                        goto unrecognized;
+                        break;
+                }
                 break;
-            case 0x9: //NCMP
-                if (g_v[xreg] != g_v[yreg]) {
-                    g_pc += 2;
+            case 0x9: //RNEQ
+                if (V[op_x] != V[op_y]) {
+                    Pc += 2;
                 }
                 break;
             case 0xa: //SETI
-                g_i = addr_operand;
+                I = op_addr;
                 break;
             case 0xb: //JAR0
-                g_pc = addr_operand + g_v[0] - 2;
+                Pc = op_addr + V[0] - 2;
             case 0xc: //VRND
-                g_v[xreg] = op_lo & (rand() % 0xff);
+                V[op_x] = op_lo & (rand() % 0xff);
                 break;
             case 0xd://DRAW
-                g_v[0x0f] = screen_draw(
-                    g_v[xreg],
-                    g_v[yreg],
+                V[0x0f] = screen_draw(
+                    V[op_x],
+                    V[op_y],
                     op_lo & 0x0f,
-                    (uint8_t *)&g_mem[g_i]
+                    &Mem[I]
                 );
                 break;
-            case 0xe: //Skip if [not] key
-                {
-                    uint8_t xpressed = g_keystate & (0x1 << xreg);
-                    switch (op_lo) {
-                        case 0x9e:
-                            if (xpressed) {
-                                g_pc += 2;
-                                g_keystate = 0;
-                            }
-                            break;
-                        case 0xa1:
-                            if (!xpressed) {
-                                g_pc += 2;
-                                g_keystate = 0;
-                            }
-                            break;
-                        default:
-                            FAIL("illegal instruction");
-                            break;
-                    }
+            case 0xe:
+                switch (op_lo) {
+                    case 0x9e: //SKE
+                        Pc += (input_query(V[op_x])) ? 2 : 0;
+                        break;
+                    case 0xa1: //SKNE
+                        Pc += (input_query(V[op_x])) ? 0 : 2;
+                        break;
+                    default:
+                        goto unrecognized;
                 }
                 break;
             case 0xf: //Misc ops
-                op_f(op_lo, xreg);
-                break;
-            default:
-                FAIL("illegal instruction");
-                break;
-        }
-    }
-}
-
-static uint8_t key_to_num(SDL_Keycode key) {
-    switch (key) {
-        CASE_KEY_RETURN(0)
-        CASE_KEY_RETURN(1)
-        CASE_KEY_RETURN(2)
-        CASE_KEY_RETURN(3)
-        CASE_KEY_RETURN(4)
-        CASE_KEY_RETURN(5)
-        CASE_KEY_RETURN(6)
-        CASE_KEY_RETURN(7)
-        CASE_KEY_RETURN(8)
-        CASE_KEY_RETURN(9)
-        CASE_KEY_RETURN(A)
-        CASE_KEY_RETURN(B)
-        CASE_KEY_RETURN(C)
-        CASE_KEY_RETURN(D)
-        CASE_KEY_RETURN(E)
-        CASE_KEY_RETURN(F)
-    }
-    return NUMKEYS;
-}
-
-static void op_0(uint8_t op) 
-{
-    switch (op) {
-        case 0xe0: //CLS
-            screen_cls();
-            break;
-        case 0xee: //RET
-            if (g_sp <= 0) {
-                FAIL("stack underflow");
-            }
-            --g_sp;
-            g_pc = g_stack[g_sp];
-            break;
-        default:
-            FAIL("illegal instruction");
-            break;
-    }
-}
-
-static void op_8(uint8_t op, uint8_t x, uint8_t y) 
-{
-    switch (op) {
-        case 0x0: //COPY
-            g_v[x] = g_v[y];
-            break;
-        case 0x1: //OR
-            g_v[x] |= g_v[y];
-            break;
-        case 0x2: //AND
-            g_v[x] &= g_v[y];
-            break;
-        case 0x3: //XOR
-            g_v[x] ^= g_v[y];
-            break;
-        case 0x4: //ADDC
-            {
-                uint8_t res = g_v[x] + g_v[y];
-                g_v[0xf] = (res < g_v[x] || res < g_v[y]) ? 0x1 : 0x0;
-                g_v[x] = res;
-            }
-            break;
-        case 0x5: //SUBY
-            {
-                uint8_t res = g_v[x] - g_v[y];
-                g_v[0xf] = (res > g_v[x]) ? 0x1 : 0x0;
-                g_v[x] = res;
-            }
-            break;
-        case 0x6: //SHR
-            g_v[0xf] = g_v[x] & 0xfe;
-            g_v[x] >>= 1;
-            break;
-        case 0x7: //SUBX
-            {
-                uint8_t res = g_v[y] - g_v[x];
-                g_v[0xf] = (res > g_v[y]) ? 0x1 : 0x0;
-                g_v[x] = res;
-            }
-            break;
-        case 0xe: //SHL
-            g_v[0xf] = (g_v[x] & 0x80) >> 7;
-            g_v[x] <<= 1;
-            break;
-        default:
-            FAIL("illegal instruction");
-            break;
-    }
-}
-
-static void op_f(uint8_t op, uint8_t x) 
-{
-    switch (op) {
-        case 0x07: //GDEL
-            g_v[x] = g_delay;
-            break;
-        case 0x0a: //GKEY
-            {
-                SDL_Event e = {0};
-                while (SDL_WaitEvent(&e)) {
-                    if (e.type == SDL_KEYUP) {
-                        uint8_t keynum = key_to_num(e.key.keysym.sym);
-                        if (e.key.keysym.sym == KEY_QUIT) {
-                            exit(EXIT_SUCCESS);
-                        } else if (keynum < NUMKEYS) {
-                            g_v[x] = keynum;
-                            break;
+                switch (op_lo) {
+                    case 0x07: //GDEL
+                        V[op_x] = timer_get_delay();
+                        break;
+                    case 0x0a: //GKEY
+                        V[op_x] = input_get_key();
+                        break;
+                    case 0x15: //SDEL
+                        timer_set_delay(V[op_x]);
+                        break;
+                    case 0x18: //SSND
+                        timer_set_sound(V[op_x]);
+                        break;
+                    case 0x1e: //ADDI
+                        V[0xf] = (I + V[op_x] > 0xfff) ? 0x1 : 0x0;
+                        I += V[op_x];
+                        break;
+                    case 0x29: //CHRX
+                        I = CHIP8_MEM_SZ + V[op_x]*5;
+                        break;
+                    case 0x33: //BCD
+                        if (I > CHIP8_MEM_SZ - 3) {
+                            FAIL("BCD causes memory overflow");
                         }
-                    }
+                        {
+                            uint8_t res = V[op_x];
+                            Mem[I] = res / 100;
+                            res %= 100;
+                            Mem[I + 1] = res / 10;
+                            Mem[I + 2] = res % 10;
+                        }
+                            break;
+                    case 0x55: //REGD
+                        if (I + op_x + 1 >= CHIP8_MEM_SZ) {
+                            FAIL("REGD causes memory overflow");
+                        }
+                        for (size_t i = 0; i <= op_x; ++i) {
+                            Mem[I + i] = V[i];
+                        }
+                        break;
+                    case 0x65: //REGL
+                        if (I + op_x + 1 >= CHIP8_MEM_SZ) {
+                            FAIL("REGL accesses illegal address");
+                        }
+                        for (size_t i = 0; i <= op_x; ++i) {
+                            V[i] = Mem[I + i];
+                        }
+                        break;
+                    default:
+                        goto unrecognized;
+                        break;
                 }
                 break;
-            }
-        case 0x15: //SDEL
-            g_delay = g_v[x];
-            break;
-        case 0x18: //SSND
-            puts("warning: sound not implemented");
-            break;
-        case 0x1e: //ADDI
-            {
-                uint8_t res = g_i + g_v[x];
-                g_v[0xf] = (res < g_i) ? 0x1 : 0x0;
-                g_i = res;
-            }
-            break;
-        case 0x29: //CHRX
-            g_i = CHIP8_MEM_SZ + g_v[x]*5;
-            break;
-        case 0x33: //BCD
-            if (g_i > CHIP8_MEM_SZ - 3) {
-                FAIL("BCD causes memory overflow");
-            }
-            {
-                uint8_t res = g_v[x];
-                g_mem[g_i] = res / 100;
-                res %= 100;
-                g_mem[g_i + 1] = res / 10;
-                g_mem[g_i + 2] = res % 10;
-            }
+            default:
+                goto unrecognized;
                 break;
-        case 0x55: //REGD
-            printf("%03x %02x\n", g_i, x);
-            if (g_i + x + 1 >= CHIP8_MEM_SZ) {
-                FAIL("REGD causes memory overflow");
-            }
-            for (size_t i = 0; i <= x; ++i) {
-                g_mem[g_i + i] = g_v[i];
-            }
-            break;
-        case 0x65: //REGL
-            if (g_i + x + 1 >= CHIP8_MEM_SZ) {
-                FAIL("REGL accesses illegal address");
-            }
-            for (size_t i = 0; i <= x; ++i) {
-                g_v[i] = g_mem[g_i + i];
-            }
-            break;
-        default:
-            FAIL("illegal instruction");
-            break;
+        }
+        continue;
+unrecognized:
+        printf("%s: unrecognized opcode: %02x%02x\n", __func__, op_hi, op_lo);
+        chip8_destroy();
+        exit(EXIT_FAILURE);
     }
 }
