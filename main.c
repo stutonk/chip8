@@ -25,6 +25,7 @@ int main(int argc, char *argv[argc+1])
     int opt = 0;
     size_t scale = 0;
     uint16_t entry = CHIP8_DEFAULT_ENTRY;
+    
 
     while ((opt = getopt(argc, argv, ":e:s:")) != -1) {
         switch (opt) {
@@ -63,12 +64,17 @@ int main(int argc, char *argv[argc+1])
     if (optind < argc) {
         uint8_t buf[CHIP8_MEM_SZ] = {0};
         FILE *in = fopen(argv[optind], "rb");
-        size_t bytes_in = fread(buf, sizeof(uint8_t), CHIP8_MEM_SZ, in);
-        // possible source of errors
+        size_t bytes_in = fread(
+            buf,
+            sizeof(uint8_t),
+            CHIP8_MEM_SZ - entry,
+            in
+        );
+        // possible off-by-one error
         if (!feof(in)) {
             FAIL("input file overflows available program memory");
         }
-        chip8_load(CHIP8_DEFAULT_ENTRY, buf, bytes_in);
+        chip8_load(entry, buf, bytes_in);
     } else {
         chip8_load(0, no_prog, sizeof(no_prog));
         entry = 0;

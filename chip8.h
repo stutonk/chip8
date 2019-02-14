@@ -1,3 +1,18 @@
+/*
+    The Chip8 computer consists of a binary opcode interpreter, screen
+    device, input keypad, and timer subsystem. Each are implemented 
+    (and documented) in their own respective translation units.
+    
+    See chup8.c for a list of Chip8 binary opcodes.
+
+    Both the init and load functions allow the specification of an
+    address in Chip8 memory into which to load a program as well as the
+    program's entry point, respectively. Please note that most older
+    Chip8 programs are hard-coded with address refrences relative to a
+    certain specific value (defined here as CHIP8_DEFAULT_ENTRY). The
+    default behavior of the main program should be to load and execute
+    programs at this address.
+*/
 #pragma once
 
 #include <stdbool.h>

@@ -1,15 +1,15 @@
 /*
-    Table of Opcodes
+    Table of Chip8 Opcodes
     00e0    CLS                 Clear the screen
     00ee    RET                 Return from subroutine
-    1nnn    JP    nnn           goto nnn
+    1nnn    JP      nnn         goto nnn
     2nnn    CALL    nnn         Call subroutine at addr nnn
     3xnn    SE      vx  nn      Skip next instr if vx == nn
     4xnn    SNE     vx  nn      Skip next instr if vx != nn
     5xy0    SRE     vx  vy      Skip next instr if vx == vy
-    6xnn    LD    vx  nn        vx = nn
+    6xnn    LD      vx  nn      vx = nn
     7xnn    ADD     vx  nn      vx += nn
-    8xy0    MV    vx  vy        vx = vy
+    8xy0    MV      vx  vy      vx = vy
     8xy1    OR      vx  vy      vx = vx | vy
     8xy2    AND     vx  vy      vx = vx & vy
     8xy3    XOR     vx  vy      vx = vx ^ vy
@@ -53,6 +53,13 @@
 
 #define NUMREGS 16
 
+/*
+    The Chip8 standard fontset contains sprites corresponding to each
+    key on the Chip8 keypad. In order to allow compatibility with Chip8
+    opcodes as well as free up as much memory as possible, the fontset
+    is loaded into an address range beyond that which is normally
+    available to programs.
+*/
 #define FONTSET_SZ 80
 static const uint8_t fontset[FONTSET_SZ] = { 
   0xf0, 0x90, 0x90, 0x90, 0xf0, // 0
