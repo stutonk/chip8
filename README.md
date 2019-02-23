@@ -14,7 +14,7 @@ It comes equiped with cutting-edge graphics, boasting an astonishing
 ### Usage
 `./chip8 [-s scale] [-e entry_point] path/to/chip8/rom`
 
--s changes the resolution to 64*scale by 32*scale (default 3).  
+-s changes the resolution to (64\*scale)x(32\*scale) where 3 is the default.  
 -e specifices the CHIP-8 memory location to load your rom. Don't set
 this unless you know what you're doing.
 
